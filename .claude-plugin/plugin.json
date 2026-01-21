@@ -1,0 +1,6 @@
+{
+  "name": "codex-skill",
+  "version": "1.0.0",
+  "description": "Give Claude Code a second opinion using OpenAI's Codex CLI",
+  "skills": ["skills/codex"]
+}
