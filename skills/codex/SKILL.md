@@ -52,13 +52,12 @@ codex exec --dangerously-bypass-approvals-and-sandbox "Your query here"
 
 ### Available Options (all optional)
 - `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-mini`)
-- `--reasoning-effort <level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`) - works with codex reasoning models
+- `--reasoning-effort <level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`)
 - `--full-auto`: Enable full auto mode
 
 ### Model Selection
-- Default model works well for most queries (currently defaults to `gpt-5.3-codex`)
-- Use `-m gpt-5.3-codex --reasoning-effort high` for complex architectural questions
-- Use `-m gpt-5.1-codex-mini` for faster, simpler queries
+- Default: `gpt-5.3-codex` with `xhigh` reasoning — use for all queries
+- Available alternatives: `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`
 
 ### Performance Expectations
 **IMPORTANT**: Codex is designed for thoroughness over speed:
@@ -90,7 +89,7 @@ Note: Similar to how Codex looks for agent.md files, this project uses CLAUDE.md
 1. **Start Codex early**, then continue local analysis in parallel
 2. If timeout, retry with narrower scope and note the partial run
 3. For quick fact checks, use the default model
-4. Use `-m gpt-5.3-codex --reasoning-effort high` for architecture/novel questions
+4. Use `-m gpt-5.3-codex --reasoning-effort xhigh` for architecture/novel questions
 5. Always quote path segments with metacharacters in shell examples
 
 ## Search-First Checklist
