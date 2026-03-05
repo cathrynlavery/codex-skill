@@ -26,15 +26,28 @@ npm install -g @openai/codex
 
 Configure your OpenAI API key.
 
+## Supported Models
+
+| Model | Context | Speed | Best for |
+|-------|---------|-------|----------|
+| `gpt-5.4` | 272k | Standard | Most capable — deep analysis, architecture, novel problems |
+| `gpt-5.3-codex-spark` | 128k | Ultra-fast (1000+ tok/s) | Quick queries, fact checks (default) |
+| `gpt-5.3-codex` | 272k | Standard | General-purpose coding tasks |
+| `gpt-5.2-codex` | 272k | Standard | Older alternative |
+| `gpt-5.1-codex-max` | 272k | Standard | Older alternative |
+| `gpt-5.1-codex-mini` | 272k | Fast | Budget option |
+
 ## Installation
 
 ### 1. Install the skill
 
-```bash
-claude add-skill https://github.com/cathrynlavery/codex-skill
-```
+Clone and copy the skill to your Claude Code skills directory:
 
-Or manually copy `skills/codex/SKILL.md` to `~/.claude/skills/codex/`
+```bash
+git clone https://github.com/cathrynlavery/codex-skill.git
+mkdir -p ~/.claude/skills/codex
+cp codex-skill/skills/codex/SKILL.md ~/.claude/skills/codex/
+```
 
 ### 2. Set up automatic plan review (recommended)
 
@@ -101,6 +114,8 @@ Or ask Claude:
 
 > "Can you verify this approach with Codex?"
 > "Get a second opinion on this architecture"
+
+The skill uses `gpt-5.3-codex-spark` by default for speed. For complex questions, it switches to `gpt-5.4` with high reasoning effort automatically.
 
 ## Example Output
 
