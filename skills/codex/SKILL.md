@@ -51,16 +51,17 @@ codex exec --dangerously-bypass-approvals-and-sandbox "Your query here"
 - **Working directory**: Current project root
 
 ### Available Options (all optional)
-- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-mini`)
+- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-mini`)
 - `-c model_reasoning_effort=<level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`) — use config override, NOT `--reasoning-effort` (flag doesn't exist)
 - `--full-auto`: Enable full auto mode
 
 ### Model Selection
+- **`gpt-5.4`** — newest frontier agentic coding model; 272k context, text+image input, supports reasoning levels low/medium/high/xhigh. Use for the most capable analysis.
 - **`gpt-5.3-codex-spark`** (default in config) — ultra-fast, 1000+ tok/s on Cerebras hardware; text-only, 128k context. Best for most queries where speed matters.
-- **`gpt-5.3-codex`** — full model, slower but more capable for deep architecture/novel questions
+- **`gpt-5.3-codex`** — full 5.3 model, slower but capable for deep architecture/novel questions; 272k context
 - Available alternatives: `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`
 
-**When to override away from Spark**: complex multi-file architecture analysis, novel algorithmic problems, or when reasoning depth matters more than speed. Use `-m gpt-5.3-codex -c model_reasoning_effort=xhigh` in those cases.
+**When to override away from Spark**: complex multi-file architecture analysis, novel algorithmic problems, or when reasoning depth matters more than speed. Use `-m gpt-5.4 -c model_reasoning_effort=xhigh` for maximum capability, or `-m gpt-5.3-codex -c model_reasoning_effort=xhigh` as an alternative.
 
 ### Performance Expectations
 **IMPORTANT**: Codex is designed for thoroughness over speed:
@@ -92,7 +93,7 @@ Note: Similar to how Codex looks for agent.md files, this project uses CLAUDE.md
 1. **Start Codex early**, then continue local analysis in parallel
 2. If timeout, retry with narrower scope and note the partial run
 3. For quick fact checks, use the default model
-4. Use `-m gpt-5.3-codex -c model_reasoning_effort=xhigh` for architecture/novel questions
+4. Use `-m gpt-5.4 -c model_reasoning_effort=xhigh` for architecture/novel questions
 5. Always quote path segments with metacharacters in shell examples
 
 ## Search-First Checklist
