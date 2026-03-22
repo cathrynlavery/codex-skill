@@ -6,7 +6,7 @@
 INPUT=$(cat)
 
 # Extract the plan file path from the tool input
-PLAN_FILE=$(echo "$INPUT" | jq -r '.tool_input.planFile // empty')
+PLAN_FILE=$(echo "$INPUT" | jq -r '.tool_input.planFilePath // empty')
 
 # If no plan file in input, try to find it in the project
 if [ -z "$PLAN_FILE" ]; then
