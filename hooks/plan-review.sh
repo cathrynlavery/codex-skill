@@ -3,9 +3,10 @@
 # Triggers when Claude exits plan mode to get a second opinion on the plan
 #
 # PostToolUse hook for ExitPlanMode. Receives JSON on stdin with:
-#   tool_input.plan          — plan content (direct)
-#   tool_input.planFilePath  — path to plan file on disk
-#   tool_response            — may contain plan content or file path
+#   tool_response.plan       — plan content (direct string)
+#   tool_response.filePath   — path to plan file on disk
+#   tool_response.isAgent    — whether this is an agent plan
+#   tool_input               — typically empty object {}
 #   cwd                      — working directory
 
 # Read hook input from stdin
@@ -13,28 +14,11 @@ INPUT=$(cat)
 
 PLAN_CONTENT=""
 
-# Strategy 1: Get plan content directly from tool_input.plan (fastest — no file I/O)
-PLAN_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.plan // empty' 2>/dev/null)
+# Strategy 1: Get plan content directly from tool_response.plan (primary — this is
+# where ExitPlanMode always puts the plan content)
+PLAN_CONTENT=$(echo "$INPUT" | jq -r '.tool_response.plan // empty' 2>/dev/null)
 
-# Strategy 2: Read plan file from tool_input.planFilePath
-if [ -z "$PLAN_CONTENT" ]; then
-    PLAN_FILE=$(echo "$INPUT" | jq -r '.tool_input.planFilePath // empty' 2>/dev/null)
-    if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
-        PLAN_CONTENT=$(cat "$PLAN_FILE")
-    fi
-fi
-
-# Strategy 3: Try tool_response (may contain plan content or file path)
-if [ -z "$PLAN_CONTENT" ]; then
-    # tool_response might be a string with plan content
-    PLAN_CONTENT=$(echo "$INPUT" | jq -r 'if .tool_response | type == "string" then .tool_response else empty end' 2>/dev/null)
-fi
-
-if [ -z "$PLAN_CONTENT" ]; then
-    # tool_response might be an object with .plan or .filePath
-    PLAN_CONTENT=$(echo "$INPUT" | jq -r '.tool_response.plan // empty' 2>/dev/null)
-fi
-
+# Strategy 2: Read plan file from tool_response.filePath
 if [ -z "$PLAN_CONTENT" ]; then
     PLAN_FILE=$(echo "$INPUT" | jq -r '.tool_response.filePath // empty' 2>/dev/null)
     if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
@@ -42,10 +26,27 @@ if [ -z "$PLAN_CONTENT" ]; then
     fi
 fi
 
-# Strategy 4: Search for PLAN.md in the project directory
+# Strategy 3: tool_response might be a plain string in some versions
+if [ -z "$PLAN_CONTENT" ]; then
+    PLAN_CONTENT=$(echo "$INPUT" | jq -r 'if .tool_response | type == "string" then .tool_response else empty end' 2>/dev/null)
+fi
+
+# Strategy 4: Try tool_input fields (fallback for future schema changes)
+if [ -z "$PLAN_CONTENT" ]; then
+    PLAN_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.plan // empty' 2>/dev/null)
+fi
+
+if [ -z "$PLAN_CONTENT" ]; then
+    PLAN_FILE=$(echo "$INPUT" | jq -r '.tool_input.planFilePath // .tool_input.planFile // empty' 2>/dev/null)
+    if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
+        PLAN_CONTENT=$(cat "$PLAN_FILE")
+    fi
+fi
+
+# Strategy 5: Search for PLAN.md in the project directory
 if [ -z "$PLAN_CONTENT" ]; then
     PROJECT_DIR=$(echo "$INPUT" | jq -r '.cwd // "."')
-    PLAN_FILE=$(find "$PROJECT_DIR" -maxdepth 2 -name "PLAN.md" -o -name "plan.md" 2>/dev/null | head -1)
+    PLAN_FILE=$(find "$PROJECT_DIR" -maxdepth 2 \( -name "PLAN.md" -o -name "plan.md" \) 2>/dev/null | head -1)
     if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
         PLAN_CONTENT=$(cat "$PLAN_FILE")
     fi
