@@ -1,0 +1,17 @@
+{
+  "description": "Automatic plan review — sends Claude Code plans to Codex for a second opinion",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/plan-review.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}
