@@ -57,8 +57,8 @@ if [ -z "$PLAN_CONTENT" ]; then
     exit 0
 fi
 
-# Get Codex's review
-REVIEW=$(codex exec --dangerously-bypass-approvals-and-sandbox "You are reviewing a plan that Claude Code created. Analyze it for:
+# Get Codex's review — exit silently if Codex fails (non-blocking)
+if ! REVIEW=$(codex exec --dangerously-bypass-approvals-and-sandbox "You are reviewing a plan that Claude Code created. Analyze it for:
 
 1. Potential issues or risks
 2. Missing steps or considerations
@@ -72,10 +72,7 @@ $PLAN_CONTENT
 
 Respond with:
 - LGTM (if plan is solid)
-- OR specific concerns (bullet points, max 5)" 2>&1)
-
-# Exit silently if Codex fails (non-blocking)
-if [ $? -ne 0 ]; then
+- OR specific concerns (bullet points, max 5)" 2>&1); then
     exit 0
 fi
 
