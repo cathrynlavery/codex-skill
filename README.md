@@ -30,7 +30,7 @@ Configure your OpenAI API key.
 
 | Model | Context | Speed | Best for |
 |-------|---------|-------|----------|
-| `gpt-5.4` | 272k | Standard | Most capable — deep analysis, architecture, novel problems |
+| `gpt-5.4` | 272k | Standard | Most capable -- deep analysis, architecture, novel problems |
 | `gpt-5.3-codex-spark` | 128k | Ultra-fast (1000+ tok/s) | Quick queries, fact checks (default) |
 | `gpt-5.3-codex` | 272k | Standard | General-purpose coding tasks |
 | `gpt-5.2-codex` | 272k | Standard | Older alternative |
@@ -39,9 +39,17 @@ Configure your OpenAI API key.
 
 ## Installation
 
-### 1. Install the skill
+### Option A: Install as Claude Code plugin (recommended)
 
-Clone and copy the skill to your Claude Code skills directory:
+```bash
+claude plugin add cathrynlavery/codex-skill
+```
+
+This auto-registers both the `/codex` skill and the automatic plan review hook. No manual configuration needed.
+
+### Option B: Manual installation
+
+#### 1. Install the skill
 
 ```bash
 git clone https://github.com/cathrynlavery/codex-skill.git
@@ -49,12 +57,13 @@ mkdir -p ~/.claude/skills/codex
 cp codex-skill/skills/codex/SKILL.md ~/.claude/skills/codex/
 ```
 
-### 2. Set up automatic plan review (recommended)
+#### 2. Set up automatic plan review
 
 Copy the hook script:
 
 ```bash
-cp hooks/plan-review.sh ~/.claude/hooks/
+mkdir -p ~/.claude/hooks
+cp codex-skill/hooks/plan-review.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/plan-review.sh
 ```
 
@@ -79,22 +88,22 @@ Add to your `~/.claude/settings.json`:
 }
 ```
 
-Now every time Claude finishes a plan, Codex reviews it before you approve.
-
 ## How It Works
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Claude    │────▶│ ExitPlanMode│────▶│   Codex     │
+│   Claude    │────>│ ExitPlanMode│────>│   Codex     │
 │ creates plan│     │   (hook)    │     │  reviews    │
 └─────────────┘     └─────────────┘     └─────────────┘
                                                │
-                                               ▼
+                                               v
                                         ┌─────────────┐
                                         │ You approve │
                                         │ with context│
                                         └─────────────┘
 ```
+
+The hook intercepts `ExitPlanMode` and reads the plan from `tool_response.plan` (the field where Claude Code stores the plan content). It passes the plan to Codex for review and displays the result before you approve.
 
 Codex reviews for:
 - Potential issues or risks
@@ -121,15 +130,21 @@ The skill uses `gpt-5.3-codex-spark` by default for speed. For complex questions
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔍 CODEX SECOND OPINION ON PLAN
+CODEX SECOND OPINION ON PLAN
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ LGTM - Plan covers the main implementation steps.
+LGTM - Plan covers the main implementation steps.
 
 Minor suggestions:
-• Consider adding error handling for the API timeout case
-• Step 3 could be split into separate DB migration and code changes
+- Consider adding error handling for the API timeout case
+- Step 3 could be split into separate DB migration and code changes
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+## Troubleshooting
+
+**Hook doesn't fire:** Make sure Codex CLI is installed (`codex --version`) and on your PATH. The hook exits silently on errors to avoid blocking your workflow.
+
+**No plan content found:** The hook reads from `tool_response.plan` (primary) with fallbacks to `tool_response.filePath` and filesystem search. If you're seeing issues, check that you're using a current version of Claude Code.
 
 ## License
 
