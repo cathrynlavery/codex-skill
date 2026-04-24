@@ -30,12 +30,15 @@ Configure your OpenAI API key.
 
 | Model | Context | Speed | Best for |
 |-------|---------|-------|----------|
-| `gpt-5.4` | 272k | Standard | Most capable -- deep analysis, architecture, novel problems |
-| `gpt-5.3-codex-spark` | 128k | Ultra-fast (1000+ tok/s) | Quick queries, fact checks (default) |
-| `gpt-5.3-codex` | 272k | Standard | General-purpose coding tasks |
+| `gpt-5.5` | 400k | Standard | Most capable frontier model — deepest analysis, architecture, novel problems (use with `high`/`xhigh` reasoning) |
+| `gpt-5.4` | 1M (272k standard tier) | Standard, text+image | Default — capable enough for most reviews, faster than 5.5 |
+| `gpt-5.3-codex-spark` | 128k | ~1200 tok/s (Cerebras) | Quick fact checks, trivial queries |
+| `gpt-5.3-codex` | 272k | ~65 tok/s | General-purpose coding tasks |
 | `gpt-5.2-codex` | 272k | Standard | Older alternative |
 | `gpt-5.1-codex-max` | 272k | Standard | Older alternative |
 | `gpt-5.1-codex-mini` | 272k | Fast | Budget option |
+
+> Note: for `gpt-5.4`, inputs beyond the 272k standard tier trigger a pricing surcharge (input cost doubles).
 
 ## Installation
 
@@ -124,7 +127,7 @@ Or ask Claude:
 > "Can you verify this approach with Codex?"
 > "Get a second opinion on this architecture"
 
-The skill uses `gpt-5.3-codex-spark` by default for speed. For complex questions, it switches to `gpt-5.4` with high reasoning effort automatically.
+The skill uses `gpt-5.4` by default — capable enough for most reviews and faster than the frontier model. For the hardest questions (novel architecture, deep analysis), it escalates to `gpt-5.5` with high reasoning effort. For trivial fact checks, it can drop to `gpt-5.3-codex-spark`.
 
 ## Example Output
 

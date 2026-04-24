@@ -51,17 +51,20 @@ codex exec --dangerously-bypass-approvals-and-sandbox "Your query here"
 - **Working directory**: Current project root
 
 ### Available Options (all optional)
-- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.1-codex-mini`)
+- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-5.5`, `gpt-5.4`, `gpt-5.3-codex`, `gpt-5.3-codex-spark`, `gpt-5.1-codex-mini`)
 - `-c model_reasoning_effort=<level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`) — use config override, NOT `--reasoning-effort` (flag doesn't exist)
 - `--full-auto`: Enable full auto mode
 
 ### Model Selection
-- **`gpt-5.4`** — newest frontier agentic coding model; 272k context, text+image input, supports reasoning levels low/medium/high/xhigh. Use for the most capable analysis.
-- **`gpt-5.3-codex-spark`** (default in config) — ultra-fast, 1000+ tok/s on Cerebras hardware; text-only, 128k context. Best for most queries where speed matters.
-- **`gpt-5.3-codex`** — full 5.3 model, slower but capable for deep architecture/novel questions; 272k context
+- **`gpt-5.5`** — newest frontier agentic coding model; 400k context window, supports reasoning levels low/medium/high/xhigh. Use for the deepest analysis, novel architecture, or the hardest problems. Slower than 5.4, so reserve for when reasoning depth matters more than latency.
+- **`gpt-5.4`** (default) — previous frontier model; 1M context window (272k standard-price tier), text+image input. Capable enough for most plan reviews and verification tasks, noticeably faster than 5.5. Use as the standard workhorse.
+- **`gpt-5.3-codex-spark`** — ultra-fast, ~1200 tok/s on Cerebras hardware (~15x faster than 5.3-codex); text-only, 128k context. Drop to this for trivial fact checks where speed dominates.
+- **`gpt-5.3-codex`** — full 5.3 model, ~65 tok/s; 272k context. Alternative general-purpose option.
 - Available alternatives: `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`
 
-**When to override away from Spark**: complex multi-file architecture analysis, novel algorithmic problems, or when reasoning depth matters more than speed. Use `-m gpt-5.4 -c model_reasoning_effort=xhigh` for maximum capability, or `-m gpt-5.3-codex -c model_reasoning_effort=xhigh` as an alternative.
+**When to escalate to 5.5**: complex multi-file architecture analysis, novel algorithmic problems, security-critical review, or any case where 5.4 gives a shallow answer. Use `-m gpt-5.5 -c model_reasoning_effort=high` (or `xhigh` for maximum depth).
+
+**When to drop to Spark**: trivial fact checks, quick lookups, or when you need sub-second answers and 5.4's depth is overkill.
 
 ### Performance Expectations
 **IMPORTANT**: Codex is designed for thoroughness over speed:
@@ -92,9 +95,10 @@ Note: Similar to how Codex looks for agent.md files, this project uses CLAUDE.md
 
 1. **Start Codex early**, then continue local analysis in parallel
 2. If timeout, retry with narrower scope and note the partial run
-3. For quick fact checks, use the default model
-4. Use `-m gpt-5.4 -c model_reasoning_effort=xhigh` for architecture/novel questions
-5. Always quote path segments with metacharacters in shell examples
+3. For most reviews and verification, use the default (`gpt-5.4`)
+4. For architecture/novel questions, escalate with `-m gpt-5.5 -c model_reasoning_effort=high`
+5. For trivial fact checks where speed dominates, use `-m gpt-5.3-codex-spark`
+6. Always quote path segments with metacharacters in shell examples
 
 ## Search-First Checklist
 
