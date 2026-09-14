@@ -1,0 +1,14 @@
+{
+  "name": "codex-skill",
+  "description": "Single-plugin marketplace for codex-skill",
+  "owner": {
+    "name": "cathrynlavery"
+  },
+  "plugins": [
+    {
+      "name": "codex-skill",
+      "source": "./",
+      "description": "Give Claude Code a second opinion using OpenAI Codex - automatic plan review via hooks"
+    }
+  ]
+}

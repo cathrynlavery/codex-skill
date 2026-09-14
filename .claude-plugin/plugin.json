@@ -1,5 +1,6 @@
 {
   "name": "codex-skill",
+  "version": "1.0.0",
   "description": "Give Claude Code a second opinion using OpenAI Codex - automatic plan review via hooks",
   "author": {
     "name": "cathrynlavery"
