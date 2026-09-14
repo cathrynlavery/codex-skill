@@ -28,14 +28,15 @@ Configure your OpenAI API key.
 
 ## Supported Models
 
-The 5.6 family is the current generation (ladder: `sol` > `terra` > `luna`). Reasoning-effort levels for 5.6 are `none`, `low`, `medium`, `high`, `xhigh`, `max`.
+The skill supports the current visible Codex lineup. Automatic plan reviews do not pin a model; they inherit your configured Codex default.
 
-| Model | Context | Price /1M (in/out) | Best for |
-|-------|---------|--------------------|----------|
-| `gpt-5.6-sol` | 1.05M (128k out) | $5 / $30 | Flagship — deepest analysis, architecture, long-horizon agentic work (use with `high`/`xhigh`/`max` reasoning). Bare `gpt-5.6` aliases here |
-| `gpt-5.6-terra` | 1.05M (128k out) | $2.50 / $15 | **Default** — most reviews and verification; ~GPT-5.5-flagship quality at roughly half the cost |
-| `gpt-5.6-luna` | 1.05M (128k out) | $1 / $6 | Fast and affordable — quick fact checks, trivial queries |
-| `gpt-5.5` | 400k | — | Prior frontier model, still selectable via `-m` |
+| Model | Default effort | Supported efforts | Best for |
+|-------|----------------|-------------------|----------|
+| `gpt-6-astra` | `low` | `low`–`ultra` | Most capable option for difficult architecture, debugging, security, and long-horizon work |
+| `gpt-5.6-sol` | `medium` | `low`–`ultra` | Reliable everyday agentic workhorse |
+| `gpt-5.6-terra` | `medium` | `low`–`ultra` | Balanced everyday coding and review |
+| `gpt-5.6-luna` | `medium` | `low`–`max` | Fast and affordable checks |
+| `gpt-5.5` | `xhigh` | `low`–`xhigh` | Previous-generation coding and general work |
 
 ## Installation
 
@@ -124,7 +125,7 @@ Or ask Claude:
 > "Can you verify this approach with Codex?"
 > "Get a second opinion on this architecture"
 
-The skill uses `gpt-5.6-terra` by default — capable enough for most reviews and faster than the flagship. For the hardest questions (novel architecture, deep analysis), it escalates to `gpt-5.6-sol` with high reasoning effort. For trivial fact checks, it can drop to `gpt-5.6-luna`.
+The skill uses your configured Codex default. For the hardest questions (novel architecture, deep analysis, or security review), explicitly select `gpt-6-astra` with high or greater reasoning effort. For trivial fact checks, select `gpt-5.6-luna`.
 
 ## Example Output
 
