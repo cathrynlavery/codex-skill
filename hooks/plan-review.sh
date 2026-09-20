@@ -57,8 +57,8 @@ if [ -z "$PLAN_CONTENT" ]; then
     exit 0
 fi
 
-# Get Codex's review
-REVIEW=$(codex exec --dangerously-bypass-approvals-and-sandbox "You are reviewing a plan that Claude Code created. Analyze it for:
+# Get Codex's review with read-only shell access
+REVIEW=$(codex exec --sandbox read-only "You are reviewing a plan that Claude Code created. Analyze it for:
 
 1. Potential issues or risks
 2. Missing steps or considerations
@@ -74,8 +74,10 @@ Respond with:
 - LGTM (if plan is solid)
 - OR specific concerns (bullet points, max 5)" 2>&1)
 
-# Exit silently if Codex fails (non-blocking)
-if [ $? -ne 0 ]; then
+# Report failures without blocking the workflow or presenting them as a review
+REVIEW_STATUS=$?
+if [ "$REVIEW_STATUS" -ne 0 ]; then
+    printf 'codex-skill: plan review skipped (codex exited %s; check installation, authentication, and configuration).\n' "$REVIEW_STATUS" >&2
     exit 0
 fi
 

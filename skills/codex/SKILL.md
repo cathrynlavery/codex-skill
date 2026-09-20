@@ -42,18 +42,18 @@ Serve as Claude Code's technical consultant for:
 
 ### Full Command Pattern
 ```bash
-codex exec --dangerously-bypass-approvals-and-sandbox "Your query here"
+codex exec --sandbox read-only "Your query here"
 ```
 
 ### Implementation Details
 - **Subcommand**: `exec` is REQUIRED for non-interactive/automated use
-- **Sandbox bypass**: `--dangerously-bypass-approvals-and-sandbox` enables full access
+- **Sandbox**: `--sandbox read-only` is required for consultations and reviews; keep model-generated shell commands read-only
+- **Scope**: Provide analysis only. Do not enable sandbox bypass, writable sandbox modes, or `--full-auto` for consultations
 - **Working directory**: Current project root
 
 ### Available Options (all optional)
 - `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`)
 - `-c model_reasoning_effort=<level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`, `max`, and, where supported, `ultra`) — use config override, NOT `--reasoning-effort` (flag doesn't exist). Supported levels vary by model.
-- `--full-auto`: Enable full auto mode
 
 ### Model Selection
 Codex currently exposes GPT-6 Astra, the GPT-5.6 family, and GPT-5.5. The command examples intentionally do not pin a model, so automatic reviews inherit the user's configured Codex default and continue to follow Codex upgrades.
@@ -76,13 +76,13 @@ Codex currently exposes GPT-6 Astra, the GPT-5.6 family, and GPT-5.5. The comman
 
 ### Prompt Template
 ```bash
-codex exec --dangerously-bypass-approvals-and-sandbox "Context: [Project name] ([tech stack]). Relevant docs: @/CLAUDE.md plus package-level CLAUDE.md files. Task: <short task>. Repository evidence: <paths/lines from rg/git>. Constraints: [constraints]. Please return: (1) decisive answer; (2) supporting citations (paths:line); (3) risks/edge cases; (4) recommended next steps/tests; (5) open questions. List any uncertainties explicitly."
+codex exec --sandbox read-only "Context: [Project name] ([tech stack]). Relevant docs: @/CLAUDE.md plus package-level CLAUDE.md files. Task: <short task>. Repository evidence: <paths/lines from rg/git>. Constraints: [constraints]. Please return: (1) decisive answer; (2) supporting citations (paths:line); (3) risks/edge cases; (4) recommended next steps/tests; (5) open questions. List any uncertainties explicitly."
 ```
 
 ### Context Sharing Pattern
 Always provide project context:
 ```bash
-codex exec --dangerously-bypass-approvals-and-sandbox "Context: This is the [Project] monorepo, a [description] using [tech stack].
+codex exec --sandbox read-only "Context: This is the [Project] monorepo, a [description] using [tech stack].
 
 Key documentation is at @/CLAUDE.md
 
