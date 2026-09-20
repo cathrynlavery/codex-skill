@@ -107,6 +107,8 @@ Add to your `~/.claude/settings.json`:
 
 The hook intercepts `ExitPlanMode` and reads the plan from `tool_response.plan` (the field where Claude Code stores the plan content). It passes the plan to Codex for review and displays the result before you approve.
 
+Automatic plan reviews always use `codex exec --sandbox read-only` to restrict model-generated shell commands to read-only access. Manual consultations default to the same mode; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook reports that the review was skipped on stderr and exits successfully so your workflow can continue.
+
 Codex reviews for:
 - Potential issues or risks
 - Missing steps
@@ -126,6 +128,12 @@ Or ask Claude:
 > "Can you verify this approach with Codex?"
 > "Get a second opinion on this architecture"
 
+These consultation requests use read-only mode. To have Codex make changes, explicitly request implementation, for example:
+
+> "Have Codex review and fix the parser bug, then run the relevant tests."
+
+An explicit implementation request uses `--sandbox workspace-write` for edits and checks within the requested scope. No additional confirmation is needed for that same scope. Reviews do not automatically switch modes when a check needs to write files; they report the limitation. The automatic plan-review hook stays read-only even when the plan describes future edits.
+
 The skill uses your configured Codex default. For the hardest questions (novel architecture, deep analysis, or security review), explicitly select `gpt-6-astra` with high or greater reasoning effort. For trivial fact checks, select `gpt-5.6-luna`.
 
 ## Example Output
@@ -144,9 +152,17 @@ Minor suggestions:
 
 ## Troubleshooting
 
-**Hook doesn't fire:** Make sure Codex CLI is installed (`codex --version`) and on your PATH. The hook exits silently on errors to avoid blocking your workflow.
+**Plan review skipped:** The hook prints `codex-skill: plan review skipped (codex exited <status>; check installation, authentication, and configuration).` on stderr when Codex fails, while remaining non-blocking. Make sure Codex CLI is installed (`codex --version`), on your PATH, authenticated, and configured correctly. Exit status 127 usually means the executable could not be found.
 
 **No plan content found:** The hook reads from `tool_response.plan` (primary) with fallbacks to `tool_response.filePath` and filesystem search. If you're seeing issues, check that you're using a current version of Claude Code.
+
+## Development
+
+Run the hook regression tests (requires Python 3, Bash, and `jq`; uses a stub Codex executable):
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ## License
 
