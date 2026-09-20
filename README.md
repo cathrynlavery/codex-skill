@@ -107,7 +107,7 @@ Add to your `~/.claude/settings.json`:
 
 The hook intercepts `ExitPlanMode` and reads the plan from `tool_response.plan` (the field where Claude Code stores the plan content). It passes the plan to Codex for review and displays the result before you approve.
 
-Automatic reviews and manual consultations use `codex exec --sandbox read-only` to restrict model-generated shell commands to read-only access. If Codex fails, the hook reports that the review was skipped on stderr and exits successfully so your workflow can continue.
+Automatic plan reviews always use `codex exec --sandbox read-only` to restrict model-generated shell commands to read-only access. Manual consultations default to the same mode; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook reports that the review was skipped on stderr and exits successfully so your workflow can continue.
 
 Codex reviews for:
 - Potential issues or risks
@@ -127,6 +127,12 @@ Or ask Claude:
 
 > "Can you verify this approach with Codex?"
 > "Get a second opinion on this architecture"
+
+These consultation requests use read-only mode. To have Codex make changes, explicitly request implementation, for example:
+
+> "Have Codex review and fix the parser bug, then run the relevant tests."
+
+An explicit implementation request uses `--sandbox workspace-write` for edits and checks within the requested scope. No additional confirmation is needed for that same scope. Reviews do not automatically switch modes when a check needs to write files; they report the limitation. The automatic plan-review hook stays read-only even when the plan describes future edits.
 
 The skill uses your configured Codex default. For the hardest questions (novel architecture, deep analysis, or security review), explicitly select `gpt-6-astra` with high or greater reasoning effort. For trivial fact checks, select `gpt-5.6-luna`.
 
