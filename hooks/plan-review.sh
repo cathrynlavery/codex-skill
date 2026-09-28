@@ -55,24 +55,30 @@ if [ -z "$PLAN_CONTENT" ]; then
     exit 0
 fi
 
-STATE_DIR=${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}/codex-skill}
+# Per-user state (never a shared /tmp path): the plugin data dir, or the XDG state dir
+# for a manual install.
+STATE_DIR=${CLAUDE_PLUGIN_DATA:-${XDG_STATE_HOME:-$HOME/.local/state}/codex-skill}
 mkdir -p "$STATE_DIR" 2>/dev/null
 
 # Drop "already revised once" markers left behind by sessions that ended mid-revision
 find "$STATE_DIR" -maxdepth 1 -name 'bounced-*' -mmin +1440 -delete 2>/dev/null
 
 PLAN_KEY="${SESSION_ID:-nosession}-${PLAN_FILE##*/}"
-MARKER="$STATE_DIR/bounced-${PLAN_KEY//[^A-Za-z0-9._-]/_}"
-
-LAST_MESSAGE="$STATE_DIR/last-message-$$.txt"
-CODEX_LOG="$STATE_DIR/codex-$$.log"
-trap 'rm -f "$LAST_MESSAGE" "$CODEX_LOG"' EXIT
+PLAN_KEY="${PLAN_KEY//[^A-Za-z0-9._-]/_}"
+# Keep the marker name well under the 255-byte filename limit
+MARKER="$STATE_DIR/bounced-${PLAN_KEY:0:200}"
 
 skip() {
     jq -n --arg msg "Codex plan review skipped ($1; check installation, authentication, and configuration). Codex output: $STATE_DIR/last-failure.log" \
         '{systemMessage: $msg}'
     exit 0
 }
+
+# Per-run files go in a private directory created by mktemp
+RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/codex-skill.XXXXXX" 2>/dev/null) || skip "could not create a temporary directory"
+trap 'rm -rf "$RUN_DIR"' EXIT
+LAST_MESSAGE="$RUN_DIR/last-message.txt"
+CODEX_LOG="$RUN_DIR/codex.log"
 
 PROMPT="You are reviewing an implementation plan that Claude Code wrote, before the user approves it.
 You may read files in the working directory to check the plan against the code.
@@ -102,18 +108,40 @@ if ! command -v codex >/dev/null 2>&1; then
     skip "codex exited 127"
 fi
 
-# Stop Codex before the hook timeout so the user gets a clear skip message.
-# macOS has no timeout(1), so perl stands in for it (exit 124 on timeout, like timeout(1)).
+# Stop Codex before the hook timeout so the user gets a clear skip message (exit 124 on
+# timeout, like timeout(1)). Codex runs in its own process group so that the commands it
+# spawned are stopped with it, on timeout and when this hook is cancelled.
+# macOS has no timeout(1), so perl comes first; GNU timeout is the fallback.
 if command -v perl >/dev/null 2>&1; then
-    perl -e '
+    perl -MPOSIX -e '
         my $seconds = shift;
         my $pid = fork() // exit 126;
-        if ($pid == 0) { exec @ARGV or exit 127 }
-        $SIG{ALRM} = sub { kill "TERM", $pid; sleep 2; kill "KILL", $pid; waitpid($pid, 0); exit 124 };
+        if ($pid == 0) { setpgrp(0, 0); exec @ARGV or exit 127 }
+        setpgrp($pid, $pid);
+        # TERM the whole group, give it 2 s, then KILL whatever is left
+        sub stop_group {
+            my $code = shift;
+            kill "-TERM", $pid;
+            for (1 .. 20) {
+                last if waitpid($pid, POSIX::WNOHANG()) == $pid;
+                select(undef, undef, undef, 0.1);
+            }
+            kill "-KILL", $pid;
+            waitpid($pid, 0);
+            exit $code;
+        }
+        $SIG{ALRM} = sub { stop_group(124) };
+        $SIG{HUP} = sub { stop_group(129) };
+        $SIG{INT} = sub { stop_group(130) };
+        $SIG{TERM} = sub { stop_group(143) };
         alarm $seconds;
         waitpid($pid, 0);
-        exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
+        my $status = $?;
+        kill "-KILL", $pid;    # commands Codex left behind
+        exit(($status & 127) ? 128 + ($status & 127) : $status >> 8);
     ' "$TIMEOUT" codex "${CODEX_ARGS[@]}" "$PROMPT" </dev/null >"$CODEX_LOG" 2>&1
+elif command -v timeout >/dev/null 2>&1; then
+    timeout -k 5 "$TIMEOUT" codex "${CODEX_ARGS[@]}" "$PROMPT" </dev/null >"$CODEX_LOG" 2>&1
 else
     codex "${CODEX_ARGS[@]}" "$PROMPT" </dev/null >"$CODEX_LOG" 2>&1
 fi
@@ -153,8 +181,9 @@ while IFS= read -r line; do
     break
 done <<< "$REVIEW"
 
-if [ "$MODE" = "revise" ] && [ "$VERDICT" = "concerns" ] && [ ! -e "$MARKER" ]; then
-    touch "$MARKER"
+# Send the plan back only if the marker is recorded; otherwise it could be sent back forever
+if [ "$MODE" = "revise" ] && [ "$VERDICT" = "concerns" ] && [ ! -e "$MARKER" ] &&
+    touch "$MARKER" 2>/dev/null; then
     jq -n --arg review "$REVIEW" '{
         systemMessage: ("Codex raised concerns about the plan; Claude is revising it.\n\n" + $review),
         hookSpecificOutput: {

@@ -118,7 +118,7 @@ Set `CODEX_SKILL_PLAN_REVIEW` in the hook command or in your environment:
 
 For example, in `hooks.json` or `settings.json`: `"command": "CODEX_SKILL_PLAN_REVIEW=revise bash ${CLAUDE_PLUGIN_ROOT}/hooks/plan-review.sh"`.
 
-`CODEX_SKILL_REVIEW_TIMEOUT` (default 240 seconds) stops a Codex run that takes too long. It stays below the 300-second hook timeout, so you get a clear message and not a hook error.
+`CODEX_SKILL_REVIEW_TIMEOUT` (default 240 seconds) stops a Codex run that takes too long, together with any commands it started (Codex runs in its own process group). It stays below the 300-second hook timeout, so you get a clear message and not a hook error. The watchdog uses `perl`, or GNU `timeout` where perl is missing; with neither, only the hook timeout applies.
 
 Automatic plan reviews always use `codex exec --sandbox read-only --skip-git-repo-check --ephemeral` to restrict model-generated shell commands to read-only access. The read-only sandbox is what makes it safe to also review plans outside git repositories. Only Codex's final answer (`--output-last-message`) is shown. Manual consultations default to read-only mode too; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook shows a `Codex plan review skipped (...)` message and lets the plan through.
 
@@ -161,7 +161,7 @@ VERDICT: CONCERNS
 
 ## Troubleshooting
 
-**Plan review skipped:** The hook shows `Codex plan review skipped (codex exited <status>; ...)` when Codex fails, and lets the plan through. Codex's output from the failed run is kept in `last-failure.log` in the plugin data directory (the message gives the path). Make sure Codex CLI is installed (`codex --version`), on your PATH, authenticated, and configured correctly. Exit status 127 usually means the executable could not be found. `timed out` means the review took longer than `CODEX_SKILL_REVIEW_TIMEOUT`.
+**Plan review skipped:** The hook shows `Codex plan review skipped (codex exited <status>; ...)` when Codex fails, and lets the plan through. Codex's output from the failed run is kept in `last-failure.log` in the plugin data directory, or in `~/.local/state/codex-skill` for a manual install (the message gives the path). Make sure Codex CLI is installed (`codex --version`), on your PATH, authenticated, and configured correctly. Exit status 127 usually means the executable could not be found. `timed out` means the review took longer than `CODEX_SKILL_REVIEW_TIMEOUT`.
 
 **No review appears:** Run `/hooks` and check for a `PreToolUse` entry with matcher `ExitPlanMode`. A manual install from an older version may still register the hook under `PostToolUse`; move it to `PreToolUse`. Plugin hooks load when a session starts, so restart Claude Code after installing or updating.
 

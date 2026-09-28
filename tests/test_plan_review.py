@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -24,7 +25,7 @@ class PlanReviewTests(unittest.TestCase):
         self.data_dir = self.project / "plugin-data"
         self.plan_file = self.project / PLAN_NAME
         # Keep PATH isolated so the tests never invoke a real Codex executable.
-        for name in ("cat", "jq", "find", "mkdir", "rm", "touch", "mv", "perl", "sleep"):
+        for name in ("cat", "jq", "find", "mkdir", "mktemp", "rm", "touch", "mv", "perl", "sleep"):
             executable = shutil.which(name)
             if executable is None:
                 self.skipTest(f"{name} is required")
@@ -45,6 +46,8 @@ class PlanReviewTests(unittest.TestCase):
             '  if [ "$1" = "-o" ]; then out="$2"; shift; fi\n'
             '  shift\n'
             'done\n'
+            'echo "$$ $PPID" > "$PWD/codex-pids"\n'
+            'if [ -n "$STUB_GRANDCHILD" ]; then sleep 30 & echo $! > "$PWD/grandchild-pid"; fi\n'
             'if [ -n "$STUB_SLEEP" ]; then sleep "$STUB_SLEEP"; fi\n'
             'echo "OpenAI Codex banner noise"\n'
             'if [ -n "$out" ] && [ -n "$STUB_REVIEW" ]; then printf "%s\\n" "$STUB_REVIEW" > "$out"; fi\n'
@@ -53,31 +56,38 @@ class PlanReviewTests(unittest.TestCase):
         )
         self.codex.chmod(0o755)
 
-    def run_hook(self, plan="Inspect the parser and report findings.", tool_input=None, **env):
+    def hook_input(self, plan="Inspect the parser and report findings.", tool_input=None):
         if tool_input is None:
             tool_input = {"plan": plan, "planFilePath": str(self.plan_file)}
+        return json.dumps(
+            {
+                "session_id": SESSION,
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ExitPlanMode",
+                "tool_input": tool_input,
+                "cwd": str(self.project),
+            }
+        )
+
+    def hook_env(self, **env):
+        return {
+            **self.env,
+            "STUB_REVIEW": "VERDICT: LGTM",
+            "STUB_ERROR": "",
+            "STUB_STATUS": "0",
+            "STUB_SLEEP": "",
+            "STUB_GRANDCHILD": "",
+            **env,
+        }
+
+    def run_hook(self, plan="Inspect the parser and report findings.", tool_input=None, **env):
         result = subprocess.run(
             ["/bin/bash", str(HOOK)],
-            input=json.dumps(
-                {
-                    "session_id": SESSION,
-                    "hook_event_name": "PreToolUse",
-                    "tool_name": "ExitPlanMode",
-                    "tool_input": tool_input,
-                    "cwd": str(self.project),
-                }
-            ),
+            input=self.hook_input(plan, tool_input),
             text=True,
             capture_output=True,
             cwd=self.project,
-            env={
-                **self.env,
-                "STUB_REVIEW": "VERDICT: LGTM",
-                "STUB_ERROR": "",
-                "STUB_STATUS": "0",
-                "STUB_SLEEP": "",
-                **env,
-            },
+            env=self.hook_env(**env),
             timeout=20,
         )
         self.assertEqual(result.returncode, 0)
@@ -89,6 +99,17 @@ class PlanReviewTests(unittest.TestCase):
 
     def codex_args(self):
         return (self.project / "codex-args").read_bytes().split(b"\0")[:-1]
+
+    def assert_process_gone(self, pid):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        os.kill(pid, signal.SIGKILL)
+        self.fail(f"process {pid} was left running")
 
     def markers(self):
         if not self.data_dir.exists():
@@ -225,6 +246,84 @@ class PlanReviewTests(unittest.TestCase):
         out = self.output(self.run_hook(STUB_SLEEP="10", CODEX_SKILL_REVIEW_TIMEOUT="1"))
         self.assertLess(time.monotonic() - start, 8)
         self.assertIn("codex timed out after 1s", out["systemMessage"])
+
+    def test_timeout_stops_commands_codex_started(self):
+        out = self.output(
+            self.run_hook(STUB_SLEEP="10", STUB_GRANDCHILD="1", CODEX_SKILL_REVIEW_TIMEOUT="1")
+        )
+        self.assertIn("codex timed out after 1s", out["systemMessage"])
+        self.assert_process_gone(int((self.project / "grandchild-pid").read_text()))
+
+    def test_cancelled_hook_stops_codex_and_its_commands(self):
+        proc = subprocess.Popen(
+            ["/bin/bash", str(HOOK)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=self.project,
+            env=self.hook_env(STUB_SLEEP="10", STUB_GRANDCHILD="1"),
+        )
+        proc.stdin.write(self.hook_input())
+        proc.stdin.close()
+        pids = self.project / "codex-pids"
+        grandchild = self.project / "grandchild-pid"
+        deadline = time.monotonic() + 5
+        while not (pids.exists() and grandchild.exists()) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        codex_pid, watchdog_pid = map(int, pids.read_text().split())
+        os.kill(watchdog_pid, signal.SIGTERM)
+        proc.wait(timeout=10)
+        stdout = proc.stdout.read()
+        proc.stdout.close()
+        proc.stderr.close()
+        self.assertEqual(proc.returncode, 0)
+        self.assertIn("codex exited 143", json.loads(stdout)["systemMessage"])
+        self.assert_process_gone(codex_pid)
+        self.assert_process_gone(int(grandchild.read_text()))
+
+    def test_without_perl_timeout_is_used(self):
+        (self.bin_dir / "perl").unlink()
+        stub = self.bin_dir / "timeout"
+        stub.write_text('#!/bin/bash\necho "$1 $2 $3" > "$PWD/timeout-args"\nshift 3\nexec "$@"\n')
+        stub.chmod(0o755)
+        out = self.output(self.run_hook())
+        self.assertIn("VERDICT: LGTM", out["systemMessage"])
+        self.assertEqual((self.project / "timeout-args").read_text().split(), ["-k", "5", "240"])
+
+    def test_without_perl_or_timeout_codex_still_runs(self):
+        (self.bin_dir / "perl").unlink()
+        out = self.output(self.run_hook())
+        self.assertIn("VERDICT: LGTM", out["systemMessage"])
+
+    def test_plan_is_not_sent_back_when_the_marker_cannot_be_written(self):
+        self.data_dir.mkdir()
+        self.data_dir.chmod(0o500)
+        self.addCleanup(self.data_dir.chmod, 0o700)
+        out = self.output(
+            self.run_hook(CODEX_SKILL_PLAN_REVIEW="revise", STUB_REVIEW="VERDICT: CONCERNS\n- x")
+        )
+        self.assertNotIn("permissionDecision", out["hookSpecificOutput"])
+        self.assertIn("- x", out["systemMessage"])
+
+    def test_long_plan_file_names_are_sent_back_only_once(self):
+        long_plan = self.project / ("p" * 245 + ".md")
+        tool_input = {"plan": "Long name plan.", "planFilePath": str(long_plan)}
+        env = {"CODEX_SKILL_PLAN_REVIEW": "revise", "STUB_REVIEW": "VERDICT: CONCERNS\n- x"}
+        first = self.output(self.run_hook(tool_input=tool_input, **env))
+        self.assertEqual(first["hookSpecificOutput"]["permissionDecision"], "deny")
+        second = self.output(self.run_hook(tool_input=tool_input, **env))
+        self.assertNotIn("permissionDecision", second["hookSpecificOutput"])
+
+    def test_manual_install_keeps_state_in_the_home_directory(self):
+        home = self.project / "home"
+        home.mkdir()
+        self.env.pop("CLAUDE_PLUGIN_DATA")
+        self.env.pop("XDG_STATE_HOME", None)
+        self.env["HOME"] = str(home)
+        self.run_hook(CODEX_SKILL_PLAN_REVIEW="revise", STUB_REVIEW="VERDICT: CONCERNS\n- x")
+        state = home / ".local" / "state" / "codex-skill"
+        self.assertEqual(len(list(state.glob("bounced-*"))), 1)
 
     def test_no_plan_remains_silent_and_does_not_invoke_codex(self):
         result = self.run_hook(plan="")
