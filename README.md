@@ -118,6 +118,10 @@ Set `CODEX_SKILL_PLAN_REVIEW` in the hook command or in your environment:
 
 For example, in `hooks.json` or `settings.json`: `"command": "CODEX_SKILL_PLAN_REVIEW=revise bash ${CLAUDE_PLUGIN_ROOT}/hooks/plan-review.sh"`.
 
+`CODEX_SKILL_MODEL` and `CODEX_SKILL_EFFORT` pin the model and reasoning effort for the review, for example `CODEX_SKILL_MODEL=gpt-6-astra CODEX_SKILL_EFFORT=medium`. They are passed to Codex as `-m` and `-c model_reasoning_effort=...`, which override both `~/.codex/config.toml` and a project `.codex/config.toml`. Unset or empty, Codex uses its configured default. The review headline shows the model and effort that Codex reported, for example `Codex second opinion on the plan (gpt-6-astra, medium):`.
+
+If Codex's answer has no `VERDICT:` line, the review is shown as "no verdict line", never as LGTM, and the plan is not sent back.
+
 `CODEX_SKILL_REVIEW_TIMEOUT` (default 240 seconds) stops a Codex run that takes too long, together with any commands it started (Codex runs in its own process group). It stays below the 300-second hook timeout, so you get a clear message and not a hook error. The watchdog uses `perl`, or GNU `timeout` where perl is missing; with neither, only the hook timeout applies.
 
 Automatic plan reviews always use `codex exec --sandbox read-only --skip-git-repo-check --ephemeral` to restrict model-generated shell commands to read-only access. The read-only sandbox is what makes it safe to also review plans outside git repositories. Only Codex's final answer (`--output-last-message`) is shown. Manual consultations default to read-only mode too; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook shows a `Codex plan review skipped (...)` message and lets the plan through.

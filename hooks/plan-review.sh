@@ -16,6 +16,8 @@
 #       revise: when Codex raises concerns, send the plan back to Claude once to revise
 #               before the user sees it. The revised plan is reviewed again and shown.
 #   CODEX_SKILL_REVIEW_TIMEOUT  seconds before the Codex run is stopped (default 240)
+#   CODEX_SKILL_MODEL           Codex model for the review (default: from the Codex config)
+#   CODEX_SKILL_EFFORT          reasoning effort for the review (default: from the Codex config)
 
 INPUT=$(cat)
 
@@ -27,6 +29,8 @@ case "$MODE" in
 esac
 
 TIMEOUT=${CODEX_SKILL_REVIEW_TIMEOUT:-240}
+MODEL=${CODEX_SKILL_MODEL:-}
+EFFORT=${CODEX_SKILL_EFFORT:-}
 MAX_REVIEW_CHARS=9000
 
 EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // "PreToolUse"' 2>/dev/null)
@@ -68,9 +72,12 @@ PLAN_KEY="${PLAN_KEY//[^A-Za-z0-9._-]/_}"
 # Keep the marker name well under the 255-byte filename limit
 MARKER="$STATE_DIR/bounced-${PLAN_KEY:0:200}"
 
+# The user sees why the review is missing; Claude is told not to claim it happened
 skip() {
     jq -n --arg msg "Codex plan review skipped ($1; check installation, authentication, and configuration). Codex output: $STATE_DIR/last-failure.log" \
-        '{systemMessage: $msg}'
+        --arg context "The automatic Codex plan review did not run ($1). Do not tell the user that Codex reviewed this plan." \
+        --arg event "$EVENT" \
+        '{systemMessage: $msg, hookSpecificOutput: {hookEventName: $event, additionalContext: $context}}'
     exit 0
 }
 
@@ -102,6 +109,13 @@ $PLAN_CONTENT"
 CODEX_ARGS=(exec --sandbox read-only --skip-git-repo-check --ephemeral -o "$LAST_MESSAGE")
 if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
     CODEX_ARGS+=(-C "$PROJECT_DIR")
+fi
+# Command-line values override both the user and the project Codex config
+if [ -n "$MODEL" ]; then
+    CODEX_ARGS+=(-m "$MODEL")
+fi
+if [ -n "$EFFORT" ]; then
+    CODEX_ARGS+=(-c "model_reasoning_effort=\"$EFFORT\"")
 fi
 
 if ! command -v codex >/dev/null 2>&1; then
@@ -147,6 +161,24 @@ else
 fi
 REVIEW_STATUS=$?
 
+# Model and effort as the Codex log header reports them. The header ends before the
+# "user" line that starts the prompt.
+RAN_MODEL=""
+RAN_EFFORT=""
+LINES_READ=0
+while [ "$LINES_READ" -lt 40 ] && IFS= read -r line; do
+    LINES_READ=$((LINES_READ + 1))
+    [ "$line" = "user" ] && break
+    case "$line" in
+        "model: "*) [ -z "$RAN_MODEL" ] && RAN_MODEL=${line#model: } ;;
+        "reasoning effort: "*) [ -z "$RAN_EFFORT" ] && RAN_EFFORT=${line#reasoning effort: } ;;
+    esac
+done < "$CODEX_LOG"
+RAN=""
+if [ -n "$RAN_MODEL" ]; then
+    RAN=" ($RAN_MODEL${RAN_EFFORT:+, $RAN_EFFORT})"
+fi
+
 REVIEW=""
 if [ -f "$LAST_MESSAGE" ]; then
     REVIEW=$(cat "$LAST_MESSAGE")
@@ -169,14 +201,19 @@ if [ "${#REVIEW}" -gt "$MAX_REVIEW_CHARS" ]; then
 [review truncated]"
 fi
 
-# Verdict: first non-empty line that is not a code fence. Anything unrecognised counts as LGTM.
-VERDICT=lgtm
+# Verdict: first non-empty line that is not a code fence. Anything else is "unknown",
+# which never sends the plan back but is not reported as LGTM either.
+VERDICT=unknown
 while IFS= read -r line; do
     trimmed="${line#"${line%%[![:space:]]*}"}"
     [ -z "$trimmed" ] && continue
     case "$trimmed" in '```'*) continue ;; esac
     shopt -s nocasematch
-    [[ "$trimmed" =~ ^\**verdict:?\**[[:space:]]*\**concerns ]] && VERDICT=concerns
+    if [[ "$trimmed" =~ ^\**verdict:?\**[[:space:]]*\**concerns ]]; then
+        VERDICT=concerns
+    elif [[ "$trimmed" =~ ^\**verdict:?\**[[:space:]]*\**lgtm ]]; then
+        VERDICT=lgtm
+    fi
     shopt -u nocasematch
     break
 done <<< "$REVIEW"
@@ -184,26 +221,50 @@ done <<< "$REVIEW"
 # Send the plan back only if the marker is recorded; otherwise it could be sent back forever
 if [ "$MODE" = "revise" ] && [ "$VERDICT" = "concerns" ] && [ ! -e "$MARKER" ] &&
     touch "$MARKER" 2>/dev/null; then
-    jq -n --arg review "$REVIEW" '{
-        systemMessage: ("Codex raised concerns about the plan; Claude is revising it.\n\n" + $review),
+    jq -n --arg review "$REVIEW" --arg ran "$RAN" '{
+        systemMessage: ("Codex raised concerns about the plan" + $ran + "; Claude is revising it.\n\n" + $review),
         hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason: ("Codex reviewed this plan independently and raised concerns. Update the plan file to address them, or state in the plan why a concern does not apply, then call ExitPlanMode again.\n\nCodex review:\n" + $review)
+            permissionDecisionReason: ("Codex reviewed this plan independently and raised concerns. Check each concern against the code before acting on it; Codex can be wrong. Update the plan file to address them, or state in the plan why a concern does not apply, then call ExitPlanMode again.\n\nCodex review:\n" + $review)
         }
     }'
     exit 0
 fi
 
+# A marker here means this plan was already sent back once in this planning round
+REVISED=0
 if [ "$MODE" = "revise" ]; then
+    [ -e "$MARKER" ] && REVISED=1
     rm -f "$MARKER"
 fi
 
-jq -n --arg review "$REVIEW" --arg event "$EVENT" '{
-    systemMessage: ("Codex second opinion on the plan:\n\n" + $review),
+# Claude reads additionalContext together with the user's decision, so it must work
+# whether the plan was approved or rejected.
+case "$VERDICT" in
+    lgtm)
+        HEADLINE="Codex second opinion on the plan$RAN:"
+        CONTEXT="Codex reviewed the plan before the user decided on it and found no significant concerns."
+        ;;
+    concerns)
+        if [ "$REVISED" -eq 1 ]; then
+            HEADLINE="Codex still has concerns after Claude revised the plan once$RAN:"
+        else
+            HEADLINE="Codex second opinion on the plan$RAN:"
+        fi
+        CONTEXT="The user saw this Codex review before deciding on the plan. If the plan was approved, it stands: do not change its scope silently. Check each concern against the code; Codex can be wrong. In your first reply, say in one line which concerns you will handle within the approved plan and which do not apply, and ask the user before any deviation."
+        ;;
+    *)
+        HEADLINE="Codex review of the plan$RAN (no verdict line; read it in full):"
+        CONTEXT="The user saw this Codex review before deciding on the plan. Codex gave no verdict line, so read the review for concerns. Check each one against the code; Codex can be wrong."
+        ;;
+esac
+
+jq -n --arg review "$REVIEW" --arg event "$EVENT" --arg headline "$HEADLINE" --arg context "$CONTEXT" '{
+    systemMessage: ($headline + "\n\n" + $review),
     hookSpecificOutput: {
         hookEventName: $event,
-        additionalContext: ("Codex reviewed this plan independently before the user was asked to approve it. Take its review into account:\n\n" + $review)
+        additionalContext: ($context + "\n\nCodex review:\n" + $review)
     }
 }'
 

@@ -37,6 +37,8 @@ class PlanReviewTests(unittest.TestCase):
         }
         self.env.pop("CODEX_SKILL_PLAN_REVIEW", None)
         self.env.pop("CODEX_SKILL_REVIEW_TIMEOUT", None)
+        self.env.pop("CODEX_SKILL_MODEL", None)
+        self.env.pop("CODEX_SKILL_EFFORT", None)
         self.codex = self.bin_dir / "codex"
         self.codex.write_text(
             '#!/bin/bash\n'
@@ -50,6 +52,10 @@ class PlanReviewTests(unittest.TestCase):
             'if [ -n "$STUB_GRANDCHILD" ]; then sleep 30 & echo $! > "$PWD/grandchild-pid"; fi\n'
             'if [ -n "$STUB_SLEEP" ]; then sleep "$STUB_SLEEP"; fi\n'
             'echo "OpenAI Codex banner noise"\n'
+            'if [ -n "$STUB_MODEL" ]; then\n'
+            '  printf "model: %s\\nreasoning effort: %s\\n" "$STUB_MODEL" "$STUB_EFFORT"\n'
+            'fi\n'
+            'printf "user\\nmodel: from-the-prompt\\n"\n'
             'if [ -n "$out" ] && [ -n "$STUB_REVIEW" ]; then printf "%s\\n" "$STUB_REVIEW" > "$out"; fi\n'
             'printf "%s" "$STUB_ERROR" >&2\n'
             'exit "$STUB_STATUS"\n'
@@ -77,6 +83,8 @@ class PlanReviewTests(unittest.TestCase):
             "STUB_STATUS": "0",
             "STUB_SLEEP": "",
             "STUB_GRANDCHILD": "",
+            "STUB_MODEL": "stub-model",
+            "STUB_EFFORT": "stub-effort",
             **env,
         }
 
@@ -161,9 +169,18 @@ class PlanReviewTests(unittest.TestCase):
         second = self.output(
             self.run_hook(CODEX_SKILL_PLAN_REVIEW="revise", STUB_REVIEW=concerns)
         )
+        self.assertIn("Check each concern against the code", specific["permissionDecisionReason"])
+        self.assertTrue(first["systemMessage"].startswith("Codex raised concerns about the plan ("))
+
         self.assertNotIn("permissionDecision", second["hookSpecificOutput"])
         self.assertIn("- Missing rollback steps.", second["hookSpecificOutput"]["additionalContext"])
+        self.assertIn("say in one line", second["hookSpecificOutput"]["additionalContext"])
         self.assertIn("- Missing rollback steps.", second["systemMessage"])
+        self.assertTrue(
+            second["systemMessage"].startswith(
+                "Codex still has concerns after Claude revised the plan once ("
+            )
+        )
         self.assertEqual(self.markers(), [])
 
         # After the user has seen the plan, a new planning round may be sent back once more.
@@ -178,10 +195,40 @@ class PlanReviewTests(unittest.TestCase):
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
 
     def test_unrecognised_verdict_is_shown_without_a_decision(self):
-        out = self.output(
-            self.run_hook(CODEX_SKILL_PLAN_REVIEW="revise", STUB_REVIEW="Looks mostly fine.")
+        review = "The migration drops the index before copying rows.\n- Reorder steps 2 and 3."
+        out = self.output(self.run_hook(CODEX_SKILL_PLAN_REVIEW="revise", STUB_REVIEW=review))
+        specific = out["hookSpecificOutput"]
+        self.assertNotIn("permissionDecision", specific)
+        self.assertIn("no verdict line", out["systemMessage"])
+        self.assertIn("Reorder steps 2 and 3.", out["systemMessage"])
+        self.assertIn("no verdict line", specific["additionalContext"])
+        self.assertNotIn("no significant concerns", specific["additionalContext"])
+        self.assertEqual(self.markers(), [])
+
+    def test_model_and_effort_are_passed_only_when_set(self):
+        self.run_hook(CODEX_SKILL_MODEL="gpt-6-astra", CODEX_SKILL_EFFORT="medium")
+        args = self.codex_args()
+        self.assertEqual(args[args.index(b"-m") + 1], b"gpt-6-astra")
+        self.assertEqual(args[args.index(b"-c") + 1], b'model_reasoning_effort="medium"')
+        self.assertIn(b"Inspect the parser", args[-1])
+
+        self.run_hook(CODEX_SKILL_MODEL="", CODEX_SKILL_EFFORT="")
+        args = self.codex_args()
+        self.assertNotIn(b"-m", args)
+        self.assertNotIn(b"-c", args)
+
+    def test_headline_shows_the_model_codex_reported(self):
+        out = self.output(self.run_hook())
+        self.assertTrue(
+            out["systemMessage"].startswith(
+                "Codex second opinion on the plan (stub-model, stub-effort):"
+            )
         )
-        self.assertNotIn("permissionDecision", out["hookSpecificOutput"])
+        self.assertNotIn("from-the-prompt", out["systemMessage"])
+        self.assertIn("no significant concerns", out["hookSpecificOutput"]["additionalContext"])
+
+        out = self.output(self.run_hook(STUB_MODEL=""))
+        self.assertTrue(out["systemMessage"].startswith("Codex second opinion on the plan:"))
 
     def test_advise_is_the_default_and_never_denies_or_touches_markers(self):
         self.data_dir.mkdir()
@@ -190,6 +237,7 @@ class PlanReviewTests(unittest.TestCase):
         out = self.output(self.run_hook(STUB_REVIEW="VERDICT: CONCERNS\n- Missing tests."))
         self.assertNotIn("permissionDecision", out["hookSpecificOutput"])
         self.assertIn("- Missing tests.", out["hookSpecificOutput"]["additionalContext"])
+        self.assertTrue(out["systemMessage"].startswith("Codex second opinion on the plan ("))
         self.assertTrue(marker.exists())
 
     def test_off_mode_does_not_invoke_codex(self):
@@ -222,7 +270,11 @@ class PlanReviewTests(unittest.TestCase):
                         STUB_ERROR="Internal diagnostic details",
                     )
                 )
-                self.assertEqual(list(out), ["systemMessage"])
+                self.assertEqual(sorted(out), ["hookSpecificOutput", "systemMessage"])
+                self.assertIn(
+                    "did not run (codex exited", out["hookSpecificOutput"]["additionalContext"]
+                )
+                self.assertNotIn("permissionDecision", out["hookSpecificOutput"])
                 self.assertIn(
                     f"Codex plan review skipped (codex exited {status};", out["systemMessage"]
                 )
