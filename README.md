@@ -4,7 +4,7 @@ Give Claude Code a "second opinion" by letting it consult OpenAI's Codex CLI for
 
 ## What It Does
 
-When Claude Code creates a plan, Codex automatically reviews it before you approve. Two AIs checking each other's work catches more edge cases.
+When Claude Code finishes a plan, Codex reviews it before you are asked to approve it. You see the review before the approval prompt, and Claude gets it too. Two AIs checking each other's work catches more edge cases.
 
 **Automatic review on:**
 - Every plan Claude creates (via hook)
@@ -74,14 +74,14 @@ Add to your `~/.claude/settings.json`:
 ```json
 {
   "hooks": {
-    "PostToolUse": [
+    "PreToolUse": [
       {
         "matcher": "ExitPlanMode",
         "hooks": [
           {
             "type": "command",
             "command": "~/.claude/hooks/plan-review.sh",
-            "timeout": 120
+            "timeout": 300
           }
         ]
       }
@@ -93,21 +93,38 @@ Add to your `~/.claude/settings.json`:
 ## How It Works
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Claude    │────>│ ExitPlanMode│────>│   Codex     │
-│ creates plan│     │   (hook)    │     │  reviews    │
-└─────────────┘     └─────────────┘     └─────────────┘
-                                               │
-                                               v
-                                        ┌─────────────┐
-                                        │ You approve │
-                                        │ with context│
-                                        └─────────────┘
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Claude    │────>│ ExitPlanMode │────>│   Codex     │────>│ You approve │
+│ writes plan │     │ (PreToolUse) │     │  reviews    │     │ with review │
+└─────────────┘     └──────────────┘     └─────────────┘     └─────────────┘
 ```
 
-The hook intercepts `ExitPlanMode` and reads the plan from `tool_response.plan` (the field where Claude Code stores the plan content). It passes the plan to Codex for review and displays the result before you approve.
+The hook runs on `PreToolUse` for `ExitPlanMode`, so it runs before the approval prompt. Claude Code injects the plan into `tool_input.plan` (and its path into `tool_input.planFilePath`). The hook passes the plan to `codex exec` and returns hook JSON:
 
-Automatic plan reviews always use `codex exec --sandbox read-only` to restrict model-generated shell commands to read-only access. Manual consultations default to the same mode; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook reports that the review was skipped on stderr and exits successfully so your workflow can continue.
+- `systemMessage`: the review, shown to you before the approval prompt.
+- `hookSpecificOutput.additionalContext`: the same review, so Claude can take it into account when it implements the plan.
+
+A `PostToolUse` hook cannot do this: it runs only after you have approved the plan, and its plain stdout goes to the debug log, where neither you nor Claude sees it.
+
+### Review modes
+
+Set `CODEX_SKILL_PLAN_REVIEW` in the hook command or in your environment:
+
+| Mode | Behavior |
+|------|----------|
+| `advise` (default) | Show the review to you and to Claude, then ask for approval as usual. |
+| `revise` | If Codex's verdict is `CONCERNS`, send the plan back to Claude with the review (a `deny` decision). Claude revises the plan and calls `ExitPlanMode` again. That second review is shown to you, and the approval prompt follows. The plan goes back at most once before each approval prompt. |
+| `off` | Skip the review. |
+
+For example, in `hooks.json` or `settings.json`: `"command": "CODEX_SKILL_PLAN_REVIEW=revise bash ${CLAUDE_PLUGIN_ROOT}/hooks/plan-review.sh"`.
+
+`CODEX_SKILL_MODEL` and `CODEX_SKILL_EFFORT` pin the model and reasoning effort for the review, for example `CODEX_SKILL_MODEL=gpt-6-astra CODEX_SKILL_EFFORT=medium`. They are passed to Codex as `-m` and `-c model_reasoning_effort=...`, which override both `~/.codex/config.toml` and a project `.codex/config.toml`. Unset or empty, Codex uses its configured default. The review headline shows the model and effort that Codex reported, for example `Codex second opinion on the plan (gpt-6-astra, medium):`.
+
+If Codex's answer has no `VERDICT:` line, the review is shown as "no verdict line", never as LGTM, and the plan is not sent back.
+
+`CODEX_SKILL_REVIEW_TIMEOUT` (default 240 seconds) stops a Codex run that takes too long, together with any commands it started (Codex runs in its own process group). It stays below the 300-second hook timeout, so you get a clear message and not a hook error. The watchdog uses `perl`, or GNU `timeout` where perl is missing; with neither, only the hook timeout applies.
+
+Automatic plan reviews always use `codex exec --sandbox read-only --skip-git-repo-check --ephemeral` to restrict model-generated shell commands to read-only access. The read-only sandbox is what makes it safe to also review plans outside git repositories. Only Codex's final answer (`--output-last-message`) is shown. Manual consultations default to read-only mode too; explicit requests to implement changes use `--sandbox workspace-write`. If Codex fails, the hook shows a `Codex plan review skipped (...)` message and lets the plan through.
 
 Codex reviews for:
 - Potential issues or risks
@@ -139,22 +156,18 @@ The skill uses your configured Codex default. For the hardest questions (novel a
 ## Example Output
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CODEX SECOND OPINION ON PLAN
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-LGTM - Plan covers the main implementation steps.
+Codex second opinion on the plan:
 
-Minor suggestions:
-- Consider adding error handling for the API timeout case
-- Step 3 could be split into separate DB migration and code changes
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VERDICT: CONCERNS
+- Deploying directly to production without tests risks shipping regressions. Add a test
+  verifying `GET /health` returns 200 and define a post-deployment smoke check and rollback.
 ```
 
 ## Troubleshooting
 
-**Plan review skipped:** The hook prints `codex-skill: plan review skipped (codex exited <status>; check installation, authentication, and configuration).` on stderr when Codex fails, while remaining non-blocking. Make sure Codex CLI is installed (`codex --version`), on your PATH, authenticated, and configured correctly. Exit status 127 usually means the executable could not be found.
+**Plan review skipped:** The hook shows `Codex plan review skipped (codex exited <status>; ...)` when Codex fails, and lets the plan through. Codex's output from the failed run is kept in `last-failure.log` in the plugin data directory, or in `~/.local/state/codex-skill` for a manual install (the message gives the path). Make sure Codex CLI is installed (`codex --version`), on your PATH, authenticated, and configured correctly. Exit status 127 usually means the executable could not be found. `timed out` means the review took longer than `CODEX_SKILL_REVIEW_TIMEOUT`.
 
-**No plan content found:** The hook reads from `tool_response.plan` (primary) with fallbacks to `tool_response.filePath` and filesystem search. If you're seeing issues, check that you're using a current version of Claude Code.
+**No review appears:** Run `/hooks` and check for a `PreToolUse` entry with matcher `ExitPlanMode`. A manual install from an older version may still register the hook under `PostToolUse`; move it to `PreToolUse`. Plugin hooks load when a session starts, so restart Claude Code after installing or updating.
 
 ## Development
 
