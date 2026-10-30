@@ -65,17 +65,19 @@ codex exec --sandbox workspace-write "Context: [Project name] ([tech stack]). Th
 ```
 
 ### Available Options (all optional)
-- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`)
+- `--model <model>` or `-m <model>`: Specify model (e.g., `gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-luna`)
 - `-c model_reasoning_effort=<level>`: Set reasoning effort (`low`, `medium`, `high`, `xhigh`, `max`, and, where supported, `ultra`) — use config override, NOT `--reasoning-effort` (flag doesn't exist). Supported levels vary by model.
 
 ### Model Selection
-Codex currently exposes GPT-6 Astra, the GPT-5.6 family, and GPT-5.5. The command examples intentionally do not pin a model, so automatic reviews inherit the user's configured Codex default and continue to follow Codex upgrades.
+Codex currently exposes GPT-6.1 Sol and Terra, GPT-6 Astra, Sol and Luna, and the older GPT-5.6 family. The command examples intentionally do not pin a model, so automatic reviews inherit the user's configured Codex default and continue to follow Codex upgrades.
 
-- **`gpt-6-astra`** — most capable model for complex, demanding work. Use for novel architecture, difficult debugging, security review, or the hardest cross-repository questions. Supports `low` through `ultra` reasoning and defaults to `low`.
-- **`gpt-5.6-sol`** — reliable agentic workhorse for everyday tasks. Supports `low` through `ultra` reasoning and defaults to `medium`.
-- **`gpt-5.6-terra`** — balanced agentic coding model for everyday work. Supports `low` through `ultra` reasoning and defaults to `medium`.
-- **`gpt-5.6-luna`** — fast and affordable agentic coding model. Supports `low` through `max` reasoning and defaults to `medium`.
-- **`gpt-5.5`** — proven previous-generation model for coding and general work. Supports `low` through `xhigh` reasoning and defaults to `xhigh`.
+- **`gpt-6-astra`**: most capable model for complex, demanding work. Use for novel architecture, difficult debugging, security review, or the hardest cross-repository questions. Supports `low` through `ultra` reasoning and defaults to `low`.
+- **`gpt-6.1-sol`**: latest workhorse for coding and everyday work. Supports `low` through `ultra` reasoning and defaults to `medium`.
+- **`gpt-6.1-terra`**: balanced model for everyday coding and review. Supports `low` through `ultra` reasoning and defaults to `low`.
+- **`gpt-6-sol`**: previous-generation workhorse. Supports `low` through `ultra` reasoning and defaults to `medium`.
+- **`gpt-6-luna`**: fast and affordable model for easier tasks. Supports `low` through `max` reasoning and defaults to `medium`.
+
+`gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` are still listed as older generations.
 
 **When to escalate to Astra**: complex multi-file architecture analysis, novel algorithmic problems, security-critical review, or any case where another model gives a shallow answer. Use `-m gpt-6-astra -c model_reasoning_effort=high` (or `xhigh`/`max` for more depth).
 
@@ -112,7 +114,7 @@ Note: Similar to how Codex looks for agent.md files, this project uses CLAUDE.md
 2. If timeout, retry with narrower scope and note the partial run
 3. For most reviews and verification, use the user's configured Codex default
 4. For architecture/novel questions, escalate with `-m gpt-6-astra -c model_reasoning_effort=high`
-5. For trivial fact checks where speed dominates, use `-m gpt-5.6-luna`
+5. For trivial fact checks where speed dominates, use `-m gpt-6-luna`
 6. Always quote path segments with metacharacters in shell examples
 
 ## Search-First Checklist
