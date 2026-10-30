@@ -33,10 +33,12 @@ The skill supports the current visible Codex lineup. Automatic plan reviews do n
 | Model | Default effort | Supported efforts | Best for |
 |-------|----------------|-------------------|----------|
 | `gpt-6-astra` | `low` | `low`–`ultra` | Most capable option for difficult architecture, debugging, security, and long-horizon work |
-| `gpt-5.6-sol` | `medium` | `low`–`ultra` | Reliable everyday agentic workhorse |
-| `gpt-5.6-terra` | `medium` | `low`–`ultra` | Balanced everyday coding and review |
-| `gpt-5.6-luna` | `medium` | `low`–`max` | Fast and affordable checks |
-| `gpt-5.5` | `xhigh` | `low`–`xhigh` | Previous-generation coding and general work |
+| `gpt-6.1-sol` | `medium` | `low`–`ultra` | Latest workhorse for coding and everyday work |
+| `gpt-6.1-terra` | `low` | `low`–`ultra` | Balanced everyday coding and review |
+| `gpt-6-sol` | `medium` | `low`–`ultra` | Previous-generation workhorse |
+| `gpt-6-luna` | `medium` | `low`–`max` | Fast and affordable checks |
+
+`gpt-5.6-sol`, `gpt-5.6-terra` and `gpt-5.6-luna` are still listed as older generations.
 
 ## Installation
 
@@ -134,7 +136,7 @@ These consultation requests use read-only mode. To have Codex make changes, expl
 
 An explicit implementation request uses `--sandbox workspace-write` for edits and checks within the requested scope. No additional confirmation is needed for that same scope. Reviews do not automatically switch modes when a check needs to write files; they report the limitation. The automatic plan-review hook stays read-only even when the plan describes future edits.
 
-The skill uses your configured Codex default. For the hardest questions (novel architecture, deep analysis, or security review), explicitly select `gpt-6-astra` with high or greater reasoning effort. For trivial fact checks, select `gpt-5.6-luna`.
+The skill uses your configured Codex default. For the hardest questions (novel architecture, deep analysis, or security review), explicitly select `gpt-6-astra` with high or greater reasoning effort. For trivial fact checks, select `gpt-6-luna`.
 
 ## Example Output
 
